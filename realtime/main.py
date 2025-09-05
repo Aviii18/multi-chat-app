@@ -35,26 +35,16 @@ async def websocket_endpoint(websocket: WebSocket, client_id: int):
 # In-memory store for connected clients by room
 rooms = {}
 
-# @app.websocket("/ws/{room_id}")
-# async def websocket_endpoint(websocket: WebSocket, room_id: int):
-#     # Accept the connection
-#     await websocket.accept()
 
-#     # Add client to the room
-#     if room_id not in rooms:
-#         rooms[room_id] = []
-#     rooms[room_id].append(websocket)
 
-#     try:
-#         while True:
-#             data = await websocket.receive_text()
-#             # Echo back to the same client
-#             await websocket.send_text(f"Echo: {data}")
-#     except WebSocketDisconnect:
-#         # Remove client when they disconnect
-#         rooms[room_id].remove(websocket)
-#         if not rooms[room_id]:
-#             del rooms[room_id]
+from sqlalchemy import text  # make sure this import exists
+
+@app.get("/inspect-chat-message")
+def inspect_chat_message(db: Session = Depends(get_db)):
+    result = db.execute(text("PRAGMA table_info(chat_message);"))
+    columns = [dict(row._mapping) for row in result]
+    return {"chat_message_schema": columns}
+
 
 
 @app.websocket("/ws/{room_id}")
