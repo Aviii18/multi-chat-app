@@ -1,0 +1,18 @@
+# --- Django Backend ---
+Django
+djangorestframework
+djangorestframework-simplejwt
+PyJWT
+drf-spectacular
+# psycopg2-binary     # PostgreSQL driver (optional if using SQLite)
+
+# --- FastAPI Realtime Server ---
+fastapi
+uvicorn[standard]
+sqlalchemy
+python-multipart
+websockets
+pydantic
+
+# --- Utilities ---
+python-dotenv

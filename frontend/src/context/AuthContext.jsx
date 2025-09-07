@@ -1,40 +1,52 @@
-// src/context/AuthContext.jsx
-import React, { createContext, useState, useEffect } from "react";
-import API from "../api/axios";
+import React, { createContext, useState } from "react";
 
 export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
 
-  useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (token) {
-      setUser({ username: localStorage.getItem("username") });
-    }
-  }, []);
-
   const login = async (username, password) => {
     try {
-      const res = await API.post("/token/", { username, password });
-      localStorage.setItem("token", res.data.access);
-      localStorage.setItem("username", username);
-      setUser({ username });
-      return true;
-    } catch (error) {
-      console.error("Login failed:", error);
+      const response = await fetch("http://127.0.0.1:8000/api/auth/token/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        localStorage.setItem("access", data.access);
+        localStorage.setItem("refresh", data.refresh);
+        setUser({ username });
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error("Login error:", err);
       return false;
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("username");
-    setUser(null);
+  const signup = async (username, password) => {
+    try {
+      const response = await fetch("http://127.0.0.1:8000/api/signup/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+
+      if (response.ok) {
+        return true; // account created
+      }
+      return false;
+    } catch (err) {
+      console.error("Signup error:", err);
+      return false;
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout }}>
+    <AuthContext.Provider value={{ user, login, signup }}>
       {children}
     </AuthContext.Provider>
   );

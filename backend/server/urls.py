@@ -24,6 +24,7 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
+from accounts.views import signup  # adjust import if different
 
 router = DefaultRouter()
 router.register("profiles", UserProfileViewSet)
@@ -38,6 +39,14 @@ urlpatterns = [
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema")),
     path("api/", include("chat.urls")),
+    path("api/signup/", signup, name="signup"),
 ]
+
+
+
+
+
+
+
 
 

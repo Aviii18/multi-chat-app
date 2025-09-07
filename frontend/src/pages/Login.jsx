@@ -8,14 +8,28 @@ const Login = () => {
   const [password, setPassword] = useState("");
 
   const handleLogin = async (e) => {
-    e.preventDefault();
-    const success = await login(username, password);
-    if (success) {
+  e.preventDefault();
+  try {
+    const response = await fetch("http://127.0.0.1:8000/api/auth/token/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      localStorage.setItem("accessToken", data.access);
+      localStorage.setItem("refreshToken", data.refresh);
       window.location.href = "/chat";
     } else {
       alert("Invalid credentials");
     }
-  };
+  } catch (error) {
+    console.error("Login error:", error);
+    alert("Error connecting to server");
+  }
+};
+
 
   return (
     <div className="d-flex vh-100 justify-content-center align-items-center bg-dark text-light">
@@ -43,8 +57,12 @@ const Login = () => {
           Login
         </button>
       </form>
+      <p className="mt-2 text-center w-100">
+        Don't have an account? <a href="/signup">Signup here</a>
+      </p>
     </div>
   );
 };
 
 export default Login;
+
