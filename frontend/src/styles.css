@@ -1,0 +1,66 @@
+:root {
+  --bs-body-bg: #0b0f14;
+  --bs-body-color: #e5e7eb;
+  --chat-accent: #0d6efd;
+  --chat-muted: #9aa4b2;
+  --chat-surface: #111827;
+  --chat-surface-2: #0f172a;
+}
+
+body {
+  background-color: var(--bs-body-bg);
+  color: var(--bs-body-color);
+}
+
+.card {
+  background-color: var(--chat-surface);
+  border: 1px solid #1f2937;
+}
+
+.navbar, .offcanvas, .dropdown-menu {
+  background-color: var(--chat-surface-2);
+  color: var(--bs-body-color);
+}
+
+.form-control, .form-select, .input-group-text, .form-check-input {
+  background-color: #0e1522;
+  color: var(--bs-body-color);
+  border-color: #1f2937;
+}
+
+.message-bubble {
+  max-width: 70%;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.8rem;
+  margin-bottom: 0.5rem;
+  word-break: break-word;
+}
+.message-out {
+  background: rgba(13,110,253,.15);
+  border: 1px solid rgba(13,110,253,.3);
+  margin-left: auto;
+}
+.message-in {
+  background: #0e1522;
+  border: 1px solid #1f2937;
+  margin-right: auto;
+}
+
+.presence-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  display: inline-block; margin-right: 6px;
+}
+
+.typing-indicator {
+  font-size: 0.85rem;
+  color: var(--chat-muted);
+}
+
+.scroll-area {
+  overflow-y: auto;
+}
+
+.room-item:hover {
+  background-color: #0e1522;
+  cursor: pointer;
+}

@@ -1,12 +1,28 @@
-# React + Vite
+# Realtime Chat Frontend (Dark Theme)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + Bootstrap dark UI for your Django (REST + JWT) and FastAPI (WebSocket) backend.
 
-Currently, two official plugins are available:
+## Quick Start
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+1) Copy `.env.template` to `.env` and set:
+VITE_API_BASE=http://localhost:8000/api
 
-## Expanding the ESLint configuration
+VITE_WS_URL=ws://localhost:9000/ws
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+
+2) Install deps and run:
+npm i
+npm run dev
+
+3) REST APIs used:
+- `GET /rooms/`
+- `GET /messages/?room=<id>`
+- `POST /messages/` (supports multipart)
+
+4) WebSocket events:
+- Connect to `${VITE_WS_URL}?room_id=<id>&username=<name>`
+- Events:
+  - `message:new`
+  - `user:typing`
+  - `user:online`
+  - `user:offline`

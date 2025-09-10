@@ -1,68 +1,44 @@
-// src/pages/Login.jsx
-import React, { useState, useContext } from "react";
-import { AuthContext } from "../context/AuthContext";
+import React, { useState } from 'react'
+import { useNavigate, Link } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext.jsx'
 
-const Login = () => {
-  const { login } = useContext(AuthContext);
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+export default function Login() {
+  const nav = useNavigate()
+  const { login } = useAuth()
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState(null)
+  const [loading, setLoading] = useState(false)
 
-  const handleLogin = async (e) => {
-  e.preventDefault();
-  try {
-    const response = await fetch("http://127.0.0.1:8000/api/auth/token/", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password }),
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      localStorage.setItem("accessToken", data.access);
-      localStorage.setItem("refreshToken", data.refresh);
-      window.location.href = "/chat";
-    } else {
-      alert("Invalid credentials");
+  const submit = async (e) => {
+    e.preventDefault()
+    setError(null); setLoading(true)
+    try {
+      await login(username, password)
+      nav('/')
+    } catch (err) {
+      setError(err?.response?.data || 'Login failed')
+    } finally {
+      setLoading(false)
     }
-  } catch (error) {
-    console.error("Login error:", error);
-    alert("Error connecting to server");
   }
-};
-
 
   return (
-    <div className="d-flex vh-100 justify-content-center align-items-center bg-dark text-light">
-      <form
-        className="p-4 rounded bg-secondary"
-        style={{ minWidth: "300px" }}
-        onSubmit={handleLogin}
-      >
-        <h3 className="text-center mb-3">Login</h3>
-        <input
-          type="text"
-          className="form-control mb-2"
-          placeholder="Username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-        />
-        <input
-          type="password"
-          className="form-control mb-3"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-        <button className="btn btn-light w-100" type="submit">
-          Login
-        </button>
-      </form>
-      <p className="mt-2 text-center w-100">
-        Don't have an account? <a href="/signup">Signup here</a>
-      </p>
+    <div className="row justify-content-center">
+      <div className="col-12 col-md-6 col-lg-4">
+        <div className="card p-3">
+          <h3 className="mb-3">Login</h3>
+          {error ? <div className="alert alert-danger">{JSON.stringify(error)}</div> : null}
+          <form onSubmit={submit} className="d-grid gap-3">
+            <input className="form-control" placeholder="Username" value={username} onChange={e=>setUsername(e.target.value)} />
+            <input className="form-control" type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} />
+            <button className="btn btn-primary" disabled={loading} type="submit">{loading ? 'Please wait...' : 'Login'}</button>
+          </form>
+          <div className="mt-3 small text-secondary">
+            No account? <Link to="/signup">Sign up</Link>
+          </div>
+        </div>
+      </div>
     </div>
-  );
-};
-
-export default Login;
-
+  )
+}

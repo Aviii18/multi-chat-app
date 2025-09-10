@@ -1,53 +1,40 @@
-import React, { createContext, useState } from "react";
+import React, { createContext, useContext, useMemo, useState } from 'react'
+import { api } from '../lib/api.js'
 
-export const AuthContext = createContext();
+const AuthContext = createContext(null)
 
-export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
+export function AuthProvider({ children }) {
+  const [token, setToken] = useState(() => localStorage.getItem('token') || null)
+  const [user, setUser] = useState(() => {
+    const raw = localStorage.getItem('user')
+    return raw ? JSON.parse(raw) : null
+  })
 
   const login = async (username, password) => {
-    try {
-      const response = await fetch("http://127.0.0.1:8000/api/auth/token/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        localStorage.setItem("access", data.access);
-        localStorage.setItem("refresh", data.refresh);
-        setUser({ username });
-        return true;
-      }
-      return false;
-    } catch (err) {
-      console.error("Login error:", err);
-      return false;
-    }
-  };
+    const { data } = await api.post('/auth/jwt/create/', { username, password })
+    const access = data.access || data.token || data.access_token
+    setToken(access)
+    localStorage.setItem('token', access)
+    setUser({ username })
+    localStorage.setItem('user', JSON.stringify({ username }))
+  }
 
   const signup = async (username, password) => {
-    try {
-      const response = await fetch("http://127.0.0.1:8000/api/signup/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
-      });
+    await api.post('/signup/', { username, password })
+    await login(username, password)
+  }
 
-      if (response.ok) {
-        return true; // account created
-      }
-      return false;
-    } catch (err) {
-      console.error("Signup error:", err);
-      return false;
-    }
-  };
+  const logout = () => {
+    setToken(null); setUser(null)
+    localStorage.removeItem('token')
+    localStorage.removeItem('user')
+  }
 
-  return (
-    <AuthContext.Provider value={{ user, login, signup }}>
-      {children}
-    </AuthContext.Provider>
-  );
-};
+  const value = useMemo(() => ({
+    token, user, isAuthenticated: !!token, login, signup, logout
+  }), [token, user])
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+}
+
+export function useAuth() { return useContext(AuthContext) }

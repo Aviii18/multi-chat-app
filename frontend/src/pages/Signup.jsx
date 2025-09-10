@@ -1,63 +1,44 @@
-import React, { useState, useContext } from "react";
-import { AuthContext } from "../context/AuthContext";
+import React, { useState } from 'react'
+import { useNavigate, Link } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext.jsx'
 
-const Signup = () => {
-  const { signup } = useContext(AuthContext);
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+export default function Signup() {
+  const nav = useNavigate()
+  const { signup } = useAuth()
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState(null)
+  const [loading, setLoading] = useState(false)
 
-const handleSignup = async (e) => {
-  e.preventDefault();
-  console.log("🚀 Sending signup request:", JSON.stringify({ username, password }));
-
-
-  const res = await fetch("http://127.0.0.1:8000/api/signup/", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password }),
-  });
-
-  const data = await res.json();
-  if (res.ok) {
-    alert("Signup successful! Please login.");
-    window.location.href = "/";
-  } else {
-    alert("Signup failed: " + data.error);
+  const submit = async (e) => {
+    e.preventDefault()
+    setError(null); setLoading(true)
+    try {
+      await signup(username, password)
+      nav('/')
+    } catch (err) {
+      setError(err?.response?.data || 'Signup failed')
+    } finally {
+      setLoading(false)
+    }
   }
-};
-
 
   return (
-    <div className="d-flex vh-100 justify-content-center align-items-center bg-dark text-light">
-      <form
-        className="p-4 rounded bg-secondary"
-        style={{ minWidth: "300px" }}
-        onSubmit={handleSignup}
-      >
-        <h3 className="text-center mb-3">Signup</h3>
-        <input
-          type="text"
-          className="form-control mb-2"
-          placeholder="Username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-        />
-        <input
-          type="password"
-          className="form-control mb-3"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-        <button className="btn btn-light w-100" type="submit">
-          Signup
-        </button>
-      </form>
-      <p className="mt-2">
-        Already have an account? <a href="/">Login here</a>
-      </p>
+    <div className="row justify-content-center">
+      <div className="col-12 col-md-6 col-lg-4">
+        <div className="card p-3">
+          <h3 className="mb-3">Create account</h3>
+          {error ? <div className="alert alert-danger">{JSON.stringify(error)}</div> : null}
+          <form onSubmit={submit} className="d-grid gap-3">
+            <input className="form-control" placeholder="Username" value={username} onChange={e=>setUsername(e.target.value)} />
+            <input className="form-control" type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} />
+            <button className="btn btn-primary" disabled={loading} type="submit">{loading ? 'Please wait...' : 'Create'}</button>
+          </form>
+          <div className="mt-3 small text-secondary">
+            Already have an account? <Link to="/login">Login</Link>
+          </div>
+        </div>
+      </div>
     </div>
-  );
-};
-
-export default Signup;
+  )
+}

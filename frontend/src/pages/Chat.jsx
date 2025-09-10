@@ -1,92 +1,154 @@
-import { useState } from "react";
-import { Container, Row, Col, ListGroup, Form, Button, Card } from "react-bootstrap";
+import React, { useEffect, useRef, useState } from 'react'
+import RoomList from '../components/RoomList.jsx'
+import ChatWindow from '../components/ChatWindow.jsx'
+import MessageInput from '../components/MessageInput.jsx'
+import TypingIndicator from '../components/TypingIndicator.jsx'
+import { api } from '../lib/api.js'
+import { useAuth } from '../context/AuthContext.jsx'
 
 export default function Chat() {
-  const [rooms] = useState([
-    { id: 1, name: "General" },
-    { id: 2, name: "Developers" },
-    { id: 3, name: "Random" },
-  ]);
-  const [activeRoom, setActiveRoom] = useState(rooms[0]);
-  const [messages, setMessages] = useState([
-    { sender: "Alice", content: "Hey everyone 👋" },
-    { sender: "Bob", content: "Hello Alice!" },
-  ]);
-  const [newMessage, setNewMessage] = useState("");
+  const { user, isAuthenticated } = useAuth()
+  const [rooms, setRooms] = useState([])
+  const [activeRoom, setActiveRoom] = useState(null)
+  const [messages, setMessages] = useState([])
+  const [typingWho, setTypingWho] = useState([])
+  const [onlineMap, setOnlineMap] = useState({})
+  const wsRef = useRef(null)
 
-  const sendMessage = (e) => {
-    e.preventDefault();
-    if (!newMessage.trim()) return;
+  const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:9000/ws'
 
-    const msg = { sender: "You", content: newMessage };
-    setMessages([...messages, msg]);
-    setNewMessage("");
-  };
+  useEffect(() => {
+    api.get('/rooms/').then(res => setRooms(res.data))
+  }, [])
+
+  useEffect(() => {
+    if (!isAuthenticated) return
+      ; (async () => {
+        try {
+          const { data } = await api.get('/rooms/')
+          setRooms(data)
+        } catch (err) {
+          console.error('Failed to load rooms', err?.response?.data || err.message)
+        }
+      })()
+  }, [isAuthenticated])
+
+
+  useEffect(() => {
+    if (!activeRoom) return
+    api.get('/messages/', { params: { room: activeRoom.id }}).then(res => {
+      setMessages(res.data || [])
+    })
+  }, [activeRoom])
+
+  useEffect(() => {
+    if (!activeRoom) return
+    const url = `${WS_URL}?room_id=${activeRoom.id}&username=${encodeURIComponent(user?.username || '')}`
+    const ws = new WebSocket(url)
+    wsRef.current = ws
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: 'user:online', room_id: activeRoom.id, user: user?.username }))
+    }
+    ws.onclose = () => {
+      setTypingWho([])
+    }
+    ws.onerror = (e) => {
+      console.error('WS error', e)
+    }
+    ws.onmessage = (ev) => {
+      try {
+        const data = JSON.parse(ev.data)
+        if (data.type === 'message:new') {
+          setMessages(prev => [...prev, data.payload])
+        } else if (data.type === 'user:typing') {
+          setTypingWho(prev => {
+            const name = data.user
+            if (!name || prev.includes(name)) return prev
+            return [...prev, name]
+          })
+          setTimeout(() => {
+            setTypingWho(prev => prev.filter(n => n !== data.user))
+          }, 3000)
+        } else if (data.type === 'user:online') {
+          setOnlineMap(prev => ({ ...prev, [activeRoom.id]: true }))
+        } else if (data.type === 'user:offline') {
+          setOnlineMap(prev => ({ ...prev, [activeRoom.id]: false }))
+        }
+      } catch (e) {
+        console.warn('Bad WS payload', e)
+      }
+    }
+
+    return () => {
+      try {
+        ws.send(JSON.stringify({ type: 'user:offline', room_id: activeRoom.id, user: user?.username }))
+      } catch {}
+      ws.close()
+    }
+  }, [activeRoom, user])
+
+  const sendMessage = async (content) => {
+    const tmp = { _tmpId: Math.random().toString(36).slice(2), content, room: activeRoom.id, sender_name: user?.username, timestamp: new Date().toISOString() }
+    setMessages(prev => [...prev, tmp])
+    try {
+      const { data } = await api.post('/messages/', { room: activeRoom.id, content })
+      wsRef.current?.send(JSON.stringify({ type: 'message:new', room_id: activeRoom.id, payload: data }))
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  const sendTyping = () => {
+    wsRef.current?.send(JSON.stringify({ type: 'user:typing', room_id: activeRoom?.id, user: user?.username }))
+  }
+
+  const attachFile = async (file) => {
+    const form = new FormData()
+    form.append('room', activeRoom.id)
+    form.append('file', file)
+    form.append('content', file.name)
+    try {
+      const { data } = await api.post('/messages/', form, { headers: { 'Content-Type': 'multipart/form-data' }})
+      wsRef.current?.send(JSON.stringify({ type: 'message:new', room_id: activeRoom.id, payload: data }))
+    } catch (e) {
+      console.error(e)
+    }
+  }
 
   return (
-    <Container fluid className="vh-100 bg-dark text-light">
-      <Row className="h-100">
-        {/* Sidebar */}
-        <Col md={3} className="bg-secondary p-0 d-flex flex-column">
-          <div className="p-3 border-bottom border-dark">
-            <h5 className="text-center">💬 Chat Rooms</h5>
+    <div className="row g-3" style={{height: 'calc(100vh - 70px)'}}>
+      <div className="col-12 col-md-4 col-lg-3">
+        <div className="card p-2 h-100">
+          <div className="d-flex justify-content-between align-items-center mb-2">
+            <h5 className="m-0">Rooms</h5>
+            <button className="btn btn-sm btn-outline-light" onClick={()=> api.get('/rooms/').then(res=>setRooms(res.data))}>⟳</button>
           </div>
-          <ListGroup variant="flush" className="flex-grow-1 overflow-auto">
-            {rooms.map((room) => (
-              <ListGroup.Item
-                key={room.id}
-                action
-                onClick={() => setActiveRoom(room)}
-                active={activeRoom.id === room.id}
-                className="bg-dark text-light border-secondary"
-              >
-                {room.name}
-              </ListGroup.Item>
-            ))}
-          </ListGroup>
-        </Col>
-
-        {/* Chat area */}
-        <Col md={9} className="d-flex flex-column">
-          <Card className="flex-grow-1 bg-dark text-light border-0">
-            <Card.Header className="bg-secondary">
-              <h5 className="mb-0">{activeRoom.name}</h5>
-            </Card.Header>
-            <Card.Body className="d-flex flex-column overflow-auto">
-              <div className="flex-grow-1 mb-3">
-                {messages.map((msg, i) => (
-                  <div
-                    key={i}
-                    className={`mb-2 ${msg.sender === "You" ? "text-end" : "text-start"}`}
-                  >
-                    <span
-                      className={`p-2 rounded ${
-                        msg.sender === "You" ? "bg-primary text-white" : "bg-secondary text-light"
-                      }`}
-                    >
-                      <strong>{msg.sender}: </strong> {msg.content}
-                    </span>
-                  </div>
-                ))}
+          <RoomList rooms={rooms} activeRoomId={activeRoom?.id} onSelect={setActiveRoom} onlineMap={onlineMap} />
+        </div>
+      </div>
+      <div className="col-12 col-md-8 col-lg-9">
+        <div className="card p-2 h-100 d-flex">
+          {activeRoom ? (
+            <>
+              <div className="border-bottom pb-2 d-flex justify-content-between align-items-center">
+                <h5 className="m-0">{activeRoom.name}</h5>
               </div>
-
-              {/* Input box */}
-              <Form onSubmit={sendMessage} className="d-flex">
-                <Form.Control
-                  type="text"
-                  placeholder="Type a message..."
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  className="me-2 bg-dark text-light border-secondary"
-                />
-                <Button type="submit" variant="primary">
-                  Send
-                </Button>
-              </Form>
-            </Card.Body>
-          </Card>
-        </Col>
-      </Row>
-    </Container>
-  );
+              <div className="flex-grow-1 d-flex flex-column">
+                <ChatWindow messages={messages} user={user} typingWho={typingWho} />
+                <div className="mt-2">
+                  <TypingIndicator who={typingWho} />
+                  <MessageInput onSend={sendMessage} onTyping={sendTyping} onAttach={attachFile} />
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="h-100 d-flex align-items-center justify-content-center text-secondary">
+              Select a room to start chatting.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
 }

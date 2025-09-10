@@ -1,26 +1,28 @@
-import React, { useContext } from "react";
-import { WebSocketContext } from "../context/WebSocketContext";
+import React, { useEffect, useRef } from 'react'
+import FileAttachment from './FileAttachment.jsx'
 
-const ChatWindow = () => {
-  const { messages, typingUsers } = useContext(WebSocketContext);
+export default function ChatWindow({ messages, user, typingWho }) {
+  const bottomRef = useRef(null)
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, typingWho])
 
   return (
-    <div className="chat-window bg-dark text-light p-3" style={{ height: "70vh", overflowY: "scroll" }}>
-      {messages.map((msg, idx) => (
-        <div key={idx} className="mb-2">
-          <strong>User {msg.sender_id}:</strong> {msg.content}
-          {msg.file && (
-            <div>
-              <a href={msg.file} target="_blank" rel="noreferrer" className="text-info">
-                📎 File
-              </a>
+    <div className="d-flex flex-column h-100">
+      <div className="scroll-area flex-grow-1 p-3">
+        {messages.map(m => (
+          <div key={m.id || m._tmpId} className="d-flex">
+            <div className={`message-bubble ${m.sender===user?.username || m.sender_id===user?.id ? 'message-out ms-auto' : 'message-in me-auto'}`}>
+              <div className="small text-secondary">{m.sender?.username || m.sender_name || ''}</div>
+              <div>{m.content}</div>
+              {m.file ? <div className="mt-1"><FileAttachment fileUrl={m.file} /></div> : null}
+              <div className="small text-secondary mt-1">{new Date(m.timestamp || Date.now()).toLocaleString()}</div>
             </div>
-          )}
-        </div>
-      ))}
-      {typingUsers.length > 0 && <div className="text-muted">Someone is typing...</div>}
+          </div>
+        ))}
+        <div ref={bottomRef} />
+      </div>
     </div>
-  );
-};
-
-export default ChatWindow;
+  )
+}

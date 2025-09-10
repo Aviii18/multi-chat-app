@@ -1,37 +1,34 @@
+# chat/models.py
 from django.db import models
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
 
 class Room(models.Model):
-    name = models.CharField(max_length=255, unique=True)
+    name = models.CharField(max_length=120, unique=True)
     is_private = models.BooleanField(default=False)
-    members = models.ManyToManyField(User, related_name="chat_rooms")
+    members = models.ManyToManyField(User, blank=True, related_name="rooms")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "chat_room"
 
     def __str__(self):
         return self.name
 
-class Membership(models.Model):
-    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="memberships")
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="memberships")
-    joined_at = models.DateTimeField(auto_now_add=True)
+def upload_to_message(instance, filename):
+    return f"attachments/{instance.room_id}/{filename}"
 
 class Message(models.Model):
-    room = models.ForeignKey(Room, related_name="messages", on_delete=models.CASCADE)
-    sender = models.ForeignKey(User, related_name="messages", on_delete=models.CASCADE)
-    content = models.TextField(blank=True)
-    file = models.FileField(upload_to="chat_files/", blank=True, null=True)
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="messages")
+    sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name="messages")
+    content = models.TextField(blank=True, default="")
+    file = models.FileField(upload_to=upload_to_message, null=True, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        ordering = ["timestamp"]
+        db_table = "chat_message"
+
     def __str__(self):
-        return f"{self.sender.username}: {self.content[:20]}"
-
-class Attachment(models.Model):
-    message = models.ForeignKey(Message, on_delete=models.CASCADE, related_name="attachments")
-    file_url = models.URLField()
-    uploaded_at = models.DateTimeField(auto_now_add=True)
-
-
-
-
-
-
-
+        return f"{self.sender} @ {self.room}: {self.content[:30]}"
