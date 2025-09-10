@@ -66,3 +66,38 @@ body {
 }
 .justify-content-end .message-bubble { margin-left: auto; }
 .justify-content-start .message-bubble { margin-right: auto; }
+.modal-backdrop-custom {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.55);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1050;
+}
+.modal-card {
+  width: 100%;
+  max-width: 480px;
+  background-color: var(--chat-surface);
+  border: 1px solid #1f2937;
+  box-shadow: 0 10px 40px rgba(0,0,0,.6);
+}
+.members-sidebar {
+  position: absolute;
+  top: 0; right: 0; bottom: 0;
+  width: 260px;
+  background: var(--chat-surface-2);
+  border-left: 1px solid #1f2937;
+  padding: 0.5rem;
+  z-index: 20;
+}
+.members-header {
+  border-bottom: 1px solid #1f2937;
+  padding-bottom: .5rem;
+  margin-bottom: .5rem;
+}
+.members-body {
+  overflow-y: auto;
+  height: calc(100% - 44px);
+}
+.member-row:hover {
+  background: rgba(255,255,255,0.03);
+  border-radius: .5rem;
+}

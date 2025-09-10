@@ -10,10 +10,20 @@ class UserMiniSerializer(serializers.ModelSerializer):
         model = User
         fields = ("id", "username")
 
+
 class RoomSerializer(serializers.ModelSerializer):
+    is_member = serializers.SerializerMethodField()
+
     class Meta:
         model = Room
-        fields = ("id", "name", "is_private")
+        fields = ("id", "name", "is_private", "is_member")
+
+    def get_is_member(self, obj):
+        user = self.context.get("request").user
+        if not user or user.is_anonymous:
+            return False
+        return obj.members.filter(id=user.id).exists()
+
 
 class MessageSerializer(serializers.ModelSerializer):
     sender = UserMiniSerializer(read_only=True)
