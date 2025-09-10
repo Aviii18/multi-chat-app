@@ -60,8 +60,13 @@ export default function Chat() {
       try {
         const data = JSON.parse(ev.data)
         if (data.type === 'message:new') {
-          setMessages(prev => [...prev, data.payload])
-        } else if (data.type === 'user:typing') {
+          const msg = data.payload
+          setMessages(prev => {
+            if (msg?.id && prev.some(m => m.id === msg.id)) return prev
+            return [...prev, msg]
+          })
+        }
+        else if (data.type === 'user:typing') {
           setTypingWho(prev => {
             const name = data.user
             if (!name || prev.includes(name)) return prev
@@ -88,16 +93,35 @@ export default function Chat() {
     }
   }, [activeRoom, user])
 
-  const sendMessage = async (content) => {
-    const tmp = { _tmpId: Math.random().toString(36).slice(2), content, room: activeRoom.id, sender_name: user?.username, timestamp: new Date().toISOString() }
-    setMessages(prev => [...prev, tmp])
-    try {
-      const { data } = await api.post('/messages/', { room: activeRoom.id, content })
-      wsRef.current?.send(JSON.stringify({ type: 'message:new', room_id: activeRoom.id, payload: data }))
-    } catch (e) {
-      console.error(e)
-    }
+const sendMessage = async (content) => {
+  if (!activeRoom) return
+  const tmpId = (crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2))
+  const tmp = {
+    _tmpId: tmpId,
+    content,
+    room: activeRoom.id,
+    sender_name: user?.username,
+    timestamp: new Date().toISOString(),
   }
+
+  setMessages(prev => [...prev, tmp])
+
+  try {
+    const { data } = await api.post('/messages/', { room: activeRoom.id, content })
+
+    setMessages(prev => prev.map(m => (m._tmpId === tmpId ? data : m)))
+
+    wsRef.current?.send(JSON.stringify({
+      type: 'message:new',
+      room_id: activeRoom.id,
+      payload: data
+    }))
+  } catch (e) {
+    console.error(e)
+    setMessages(prev => prev.filter(m => m._tmpId !== tmpId))
+  }
+}
+
 
   const sendTyping = () => {
     wsRef.current?.send(JSON.stringify({ type: 'user:typing', room_id: activeRoom?.id, user: user?.username }))

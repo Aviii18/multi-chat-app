@@ -64,3 +64,5 @@ body {
   background-color: #0e1522;
   cursor: pointer;
 }
+.justify-content-end .message-bubble { margin-left: auto; }
+.justify-content-start .message-bubble { margin-right: auto; }
