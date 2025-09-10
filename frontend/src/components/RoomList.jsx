@@ -11,9 +11,13 @@ export default function RoomList({ rooms, activeRoomId, onSelect, onlineMap }) {
           onClick={() => onSelect(r)}
         >
           <span className="text-start">
-            <PresenceDot online={!!onlineMap[r.id]} /> {r.name}
+            <PresenceDot online={!!onlineMap[r.id]} /> {r.name} {r.is_private ? '🔒' : ''}
           </span>
-          {r.is_private ? <span className="badge text-bg-secondary">Private</span> : null}
+          <div className="d-flex align-items-center gap-2">
+            {typeof r.unread_count === 'number' && r.unread_count > 0 ? (
+              <span className="badge text-bg-primary">{r.unread_count}</span>
+            ) : null}
+          </div>
         </button>
       ))}
     </div>

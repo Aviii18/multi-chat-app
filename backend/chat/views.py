@@ -1,12 +1,14 @@
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models import Q
+from django.utils import timezone
+
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
-from .models import Room, Message
+from .models import Room, Message, RoomState, UserProfile
 from .serializers import RoomSerializer, MessageSerializer
 
 REQUIRE_MEMBERSHIP = getattr(settings, "CHAT_REQUIRE_MEMBERSHIP_FOR_PUBLIC", True)
@@ -21,8 +23,7 @@ class RoomViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         u = self.request.user
-        # Public rooms or private rooms where the user is a member.
-        # DISTINCT prevents duplicate rows from the M2M join (fixes double "General" and 500 on get_object()).
+        # Public or private (where member); DISTINCT to avoid duplicates from M2M join
         return (
             Room.objects.filter(Q(is_private=False) | Q(members=u))
             .distinct()
@@ -31,8 +32,7 @@ class RoomViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         room = serializer.save()
-        # Creator is automatically a member.
-        room.members.add(self.request.user)
+        room.members.add(self.request.user)  # auto-member creator
 
     @action(detail=True, methods=["post"])
     def join(self, request, pk=None):
@@ -63,9 +63,24 @@ class RoomViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get"])
     def members(self, request, pk=None):
-        room = self.get_object()  # respects get_queryset visibility
-        data = list(room.members.all().values("id", "username"))
+        room = self.get_object()  # respects get_queryset
+        members = list(room.members.all())
+        # attach last_seen_at
+        profiles = {p.user_id: p.last_seen_at for p in UserProfile.objects.filter(user__in=members)}
+        data = [
+            {"id": u.id, "username": u.username, "last_seen_at": profiles.get(u.id)}
+            for u in members
+        ]
         return Response(data)
+
+    @action(detail=True, methods=["post"])
+    def read(self, request, pk=None):
+        """Mark room as read 'now' for the current user (drives unread badges)."""
+        room = self.get_object()
+        state, _ = RoomState.objects.get_or_create(user=request.user, room=room)
+        state.last_read_at = timezone.now()
+        state.save(update_fields=["last_read_at"])
+        return Response({"status": "ok"})
 
 
 class MessageViewSet(viewsets.ModelViewSet):
@@ -74,18 +89,14 @@ class MessageViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def _member_rooms_qs(self, user):
-        # Only rooms where the user is a member (distinct for safety)
         return Room.objects.filter(members=user).distinct()
 
     def _public_or_member_rooms_qs(self, user):
-        # Public rooms or rooms where the user is a member (distinct for safety)
         return Room.objects.filter(Q(is_private=False) | Q(members=user)).distinct()
 
     def get_queryset(self):
         qs = super().get_queryset()
         u = self.request.user
-
-        # Choose which set of rooms are allowed for message listing:
         if REQUIRE_MEMBERSHIP:
             allowed_rooms = self._member_rooms_qs(u)
         else:
@@ -101,16 +112,25 @@ class MessageViewSet(viewsets.ModelViewSet):
         room = serializer.validated_data["room"]
         u = self.request.user
         is_member = room.members.filter(id=u.id).exists()
-
-        # If membership is required for all rooms, enforce join for public rooms too
         if REQUIRE_MEMBERSHIP and not is_member:
             raise PermissionDenied("Join the room to post.")
-
-        # Always enforce for private rooms
         if room.is_private and not is_member:
             raise PermissionDenied("Not a member of this private room.")
-
         serializer.save(sender=u)
+
+    # NEW: edit message (only by sender)
+    def perform_update(self, serializer):
+        msg = self.get_object()
+        if msg.sender != self.request.user:
+            raise PermissionDenied("You can edit only your messages.")
+        serializer.save(edited_at=timezone.now())
+
+    # NEW: delete message (only by sender)
+    def destroy(self, request, *args, **kwargs):
+        msg = self.get_object()
+        if msg.sender != request.user:
+            raise PermissionDenied("You can delete only your messages.")
+        return super().destroy(request, *args, **kwargs)
 
 
 @api_view(["POST"])
@@ -124,3 +144,13 @@ def signup(request):
         return Response({"detail": "username already exists"}, status=400)
     user = User.objects.create_user(username=username, password=password)
     return Response({"id": user.id, "username": user.username}, status=status.HTTP_201_CREATED)
+
+
+# NEW: heartbeat endpoint to update "last seen"
+@api_view(["POST"])
+@permission_classes([permissions.IsAuthenticated])
+def heartbeat(request):
+    profile, _ = UserProfile.objects.get_or_create(user=request.user)
+    profile.last_seen_at = timezone.now()
+    profile.save(update_fields=["last_seen_at"])
+    return Response({"status": "ok"})

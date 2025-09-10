@@ -58,6 +58,7 @@ body {
 
 .scroll-area {
   overflow-y: auto;
+  min-height: 0;
 }
 
 .room-item:hover {
@@ -100,4 +101,15 @@ body {
 .member-row:hover {
   background: rgba(255,255,255,0.03);
   border-radius: .5rem;
+}
+.btn-outline-secondary.py-0.px-1, .btn-outline-danger.py-0.px-1 {
+  line-height: 1rem;
+}
+
+.min-h-0 { min-height: 0; }
+.overflow-hidden { overflow: hidden; }
+
+.roomlist-scroll {
+  overflow-y: auto;
+  min-height: 0;
 }

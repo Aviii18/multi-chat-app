@@ -1,5 +1,6 @@
 import React from 'react'
 import PresenceDot from './PresenceDot.jsx'
+import { timeAgo } from '../lib/time.js'
 
 export default function MembersSidebar({ open, members, onlineUsers = new Set(), me, onClose }) {
   if (!open) return null
@@ -19,7 +20,11 @@ export default function MembersSidebar({ open, members, onlineUsers = new Set(),
                 <PresenceDot online={online} />
                 <span>{m.username}{isMe ? ' (You)' : ''}</span>
               </div>
-              <span className={`badge ${online ? 'text-bg-success' : 'text-bg-secondary'}`}>{online ? 'online' : 'offline'}</span>
+              {online ? (
+                <span className="badge text-bg-success">online</span>
+              ) : (
+                <span className="small text-secondary">last seen {timeAgo(m.last_seen_at)}</span>
+              )}
             </div>
           )
         })}

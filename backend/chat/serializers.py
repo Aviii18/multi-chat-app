@@ -1,7 +1,7 @@
 # chat/serializers.py
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Room, Message
+from .models import Room, Message, RoomState
 
 User = get_user_model()
 
@@ -10,20 +10,35 @@ class UserMiniSerializer(serializers.ModelSerializer):
         model = User
         fields = ("id", "username")
 
-
 class RoomSerializer(serializers.ModelSerializer):
     is_member = serializers.SerializerMethodField()
+    unread_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Room
-        fields = ("id", "name", "is_private", "is_member")
+        fields = ("id", "name", "is_private", "is_member", "unread_count")
 
     def get_is_member(self, obj):
-        user = self.context.get("request").user
-        if not user or user.is_anonymous:
+        request = self.context.get("request")
+        if not request or request.user.is_anonymous:
             return False
-        return obj.members.filter(id=user.id).exists()
+        return obj.members.filter(id=request.user.id).exists()
 
+    def get_unread_count(self, obj):
+        request = self.context.get("request")
+        if not request or request.user.is_anonymous:
+            return 0
+        user = request.user
+        # last_read for this user/room
+        try:
+            state = RoomState.objects.get(user=user, room=obj)
+            last_read = state.last_read_at
+        except RoomState.DoesNotExist:
+            last_read = None
+        qs = obj.messages.all()
+        if last_read:
+            qs = qs.filter(timestamp__gt=last_read)
+        return qs.count()
 
 class MessageSerializer(serializers.ModelSerializer):
     sender = UserMiniSerializer(read_only=True)
@@ -31,5 +46,5 @@ class MessageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Message
-        fields = ("id", "room", "sender", "content", "file", "timestamp")
-        read_only_fields = ("id", "sender", "timestamp")
+        fields = ("id", "room", "sender", "content", "file", "timestamp", "edited_at")
+        read_only_fields = ("id", "sender", "timestamp", "edited_at")

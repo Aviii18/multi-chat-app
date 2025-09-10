@@ -13,8 +13,10 @@ export function AuthProvider({ children }) {
   const login = async (username, password) => {
     const { data } = await api.post('/auth/jwt/create/', { username, password })
     const access = data.access || data.token || data.access_token
+    const refresh = data.refresh
     setToken(access)
     localStorage.setItem('token', access)
+    if (refresh) localStorage.setItem('refresh', refresh)
     setUser({ username })
     localStorage.setItem('user', JSON.stringify({ username }))
   }
@@ -27,6 +29,7 @@ export function AuthProvider({ children }) {
   const logout = () => {
     setToken(null); setUser(null)
     localStorage.removeItem('token')
+    localStorage.removeItem('refresh')
     localStorage.removeItem('user')
   }
 
