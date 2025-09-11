@@ -1,42 +1,98 @@
+// src/pages/Signup.jsx
 import React, { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
 
 export default function Signup() {
-  const nav = useNavigate()
   const { signup } = useAuth()
+  const navigate = useNavigate()
+
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState(null)
-  const [loading, setLoading] = useState(false)
+  const [confirm, setConfirm] = useState('')
+  const [errors, setErrors] = useState({})
 
-  const submit = async (e) => {
+  const validate = () => {
+    const e = {}
+    const u = username.trim()
+    if (!u) e.username = 'Username is required'
+    if (/\s/.test(u)) e.username = 'Username cannot contain spaces'
+
+    if (!password) e.password = 'Password is required'
+    else if (password.length < 8) e.password = 'Password must be at least 8 characters'
+
+    if (!confirm) e.confirm = 'Confirm your password'
+    else if (password !== confirm) e.confirm = 'Passwords do not match'
+
+    setErrors(e)
+    return Object.keys(e).length === 0
+  }
+
+  const onSubmit = async (e) => {
     e.preventDefault()
-    setError(null); setLoading(true)
+    if (!validate()) return
     try {
-      await signup(username, password)
-      nav('/')
+      await signup(username.trim(), password)
+      // Redirect to login with a “success” flag
+      navigate('/login', { state: { justSignedUp: true, username: username.trim() } })
     } catch (err) {
-      setError(err?.response?.data || 'Signup failed')
-    } finally {
-      setLoading(false)
+      const detail = err?.response?.data?.detail || 'Signup failed'
+      setErrors({ form: detail })
     }
   }
 
   return (
-    <div className="row justify-content-center">
-      <div className="col-12 col-md-6 col-lg-4">
-        <div className="card p-3">
-          <h3 className="mb-3">Create account</h3>
-          {error ? <div className="alert alert-danger">{JSON.stringify(error)}</div> : null}
-          <form onSubmit={submit} className="d-grid gap-3">
-            <input className="form-control" placeholder="Username" value={username} onChange={e=>setUsername(e.target.value)} />
-            <input className="form-control" type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} />
-            <button className="btn btn-primary" disabled={loading} type="submit">{loading ? 'Please wait...' : 'Create'}</button>
-          </form>
-          <div className="mt-3 small text-secondary">
-            Already have an account? <Link to="/login">Login</Link>
+    <div className="d-flex align-items-center justify-content-center" style={{minHeight:'100vh'}}>
+      <div className="card p-4" style={{minWidth: 360}}>
+        <h4 className="mb-3">Create your account</h4>
+
+        {errors.form && <div className="alert alert-danger py-2">{errors.form}</div>}
+
+        <form onSubmit={onSubmit} noValidate>
+          <div className="mb-3">
+            <label className="form-label">Username</label>
+            <input
+              className={`form-control ${errors.username ? 'is-invalid' : ''}`}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="e.g. alice"
+              autoComplete="username"
+              // Optional: block spaces at input level too
+              onKeyDown={(e) => { if (e.key === ' ') e.preventDefault() }}
+            />
+            {errors.username && <div className="invalid-feedback">{errors.username}</div>}
           </div>
+
+          <div className="mb-3">
+            <label className="form-label">Password</label>
+            <input
+              type="password"
+              className={`form-control ${errors.password ? 'is-invalid' : ''}`}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Minimum 8 characters"
+              autoComplete="new-password"
+            />
+            {errors.password && <div className="invalid-feedback">{errors.password}</div>}
+          </div>
+
+          <div className="mb-3">
+            <label className="form-label">Confirm Password</label>
+            <input
+              type="password"
+              className={`form-control ${errors.confirm ? 'is-invalid' : ''}`}
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              autoComplete="new-password"
+            />
+            {errors.confirm && <div className="invalid-feedback">{errors.confirm}</div>}
+          </div>
+
+          <button type="submit" className="btn btn-primary w-100">Sign up</button>
+        </form>
+
+        <div className="text-center mt-3">
+          Already have an account? <Link to="/login">Log in</Link>
         </div>
       </div>
     </div>

@@ -4,6 +4,7 @@ import Login from './pages/Login.jsx'
 import Signup from './pages/Signup.jsx'
 import Chat from './pages/Chat.jsx'
 import { AuthProvider, useAuth } from './context/AuthContext.jsx'
+import RequireAuth from './routes/RequireAuth.jsx'
 
 function PrivateRoute({ children }) {
   const { isAuthenticated } = useAuth()
@@ -41,9 +42,18 @@ export default function App() {
         <NavBar />
         <div className="container py-3 flex-grow-1">
           <Routes>
-            <Route path="/" element={<PrivateRoute><Chat /></PrivateRoute>} />
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
+
+            <Route
+              path="/"
+              element={
+                <RequireAuth>
+                  <Chat />
+                </RequireAuth>
+              }
+            />
+
           </Routes>
         </div>
       </div>

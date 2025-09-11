@@ -2,7 +2,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models import Q
 from django.utils import timezone
-
+import re
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.exceptions import PermissionDenied
@@ -136,14 +136,28 @@ class MessageViewSet(viewsets.ModelViewSet):
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
 def signup(request):
-    username = request.data.get("username")
-    password = request.data.get("password")
+    
+    username = (request.data.get("username") or "").strip()
+    password = request.data.get("password") or ""
+
     if not username or not password:
         return Response({"detail": "username and password required"}, status=400)
-    if User.objects.filter(username=username).exists():
+
+    if re.search(r"\s", username):
+        return Response({"detail": "username cannot contain spaces"}, status=400)
+
+    if len(password) < 8:
+        return Response({"detail": "password must be at least 8 characters"}, status=400)
+
+    if User.objects.filter(username__iexact=username).exists():
         return Response({"detail": "username already exists"}, status=400)
+
     user = User.objects.create_user(username=username, password=password)
-    return Response({"id": user.id, "username": user.username}, status=status.HTTP_201_CREATED)
+    return Response(
+        {"id": user.id, "username": user.username, "message": "Signup successful"},
+        status=status.HTTP_201_CREATED,
+    )
+
 
 
 # NEW: heartbeat endpoint to update "last seen"

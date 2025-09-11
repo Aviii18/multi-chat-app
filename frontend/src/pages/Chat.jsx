@@ -223,9 +223,9 @@ export default function Chat() {
 
   return (
     <>
-      <div className="row g-3" style={{ height: 'calc(100vh - 70px)' }}>
-        <div className="col-12 col-md-4 col-lg-3">
-          <div className="card p-2 h-100 overflow-hidden" style={{ minHeight: 0 }}>
+      <div className="row g-3 h-100 min-h-0">
+        <div className="col-12 col-md-4 col-lg-3 h-100 min-h-0">
+          <div className="card p-2 h-100 overflow-hidden" style={{minHeight: 0}}>
             <div className="d-flex justify-content-between align-items-center mb-2">
               <h5 className="m-0">Rooms</h5>
               <div className="d-flex gap-2">
@@ -239,7 +239,7 @@ export default function Chat() {
           </div>
         </div>
 
-        <div className="col-12 col-md-8 col-lg-9">
+        <div className="col-12 col-md-8 col-lg-9 h-100 min-h-0">
           <div className="card p-2 h-100 d-flex position-relative overflow-hidden" style={{minHeight: 0}}>
             {activeRoom ? (
               <>
@@ -259,7 +259,7 @@ export default function Chat() {
                     {activeRoom.is_private ? <InviteUser roomId={activeRoom.id} /> : null}
                   </div>
                 </div>
-                <div className="flex-grow-1 d-flex flex-column">
+                <div className="flex-grow-1 d-flex flex-column min-h-0">
                   {!activeRoom.is_member ? (
                     <div className="h-100 d-flex align-items-center justify-content-center text-secondary">
                       Join this room to view and send messages.
