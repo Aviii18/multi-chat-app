@@ -13,16 +13,22 @@ class UserMiniSerializer(serializers.ModelSerializer):
 class RoomSerializer(serializers.ModelSerializer):
     is_member = serializers.SerializerMethodField()
     unread_count = serializers.SerializerMethodField()
+    is_owner = serializers.SerializerMethodField()                     # NEW
+    created_by = UserMiniSerializer(read_only=True) 
 
     class Meta:
         model = Room
-        fields = ("id", "name", "is_private", "is_member", "unread_count")
+        fields = ("id", "name", "is_private", "is_member", "unread_count","created_by", "is_owner")
 
     def get_is_member(self, obj):
         request = self.context.get("request")
         if not request or request.user.is_anonymous:
             return False
         return obj.members.filter(id=request.user.id).exists()
+    
+    def get_is_owner(self, obj):
+        u = self.context["request"].user
+        return bool(obj.created_by_id and u.is_authenticated and obj.created_by_id == u.id)
 
     def get_unread_count(self, obj):
         request = self.context.get("request")

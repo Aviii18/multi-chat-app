@@ -5,17 +5,26 @@ from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
+
 class Room(models.Model):
     name = models.CharField(max_length=120, unique=True)
     is_private = models.BooleanField(default=False)
     members = models.ManyToManyField(User, blank=True, related_name="rooms")
     created_at = models.DateTimeField(auto_now_add=True)
+    # NEW: owner/creator (nullable to allow migrating existing rooms)
+    created_by = models.ForeignKey(
+        User,
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name="created_rooms"
+    )
 
     class Meta:
         db_table = "chat_room"
 
     def __str__(self):
         return self.name
+
 
 def upload_to_message(instance, filename):
     return f"attachments/{instance.room_id}/{filename}"

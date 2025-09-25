@@ -15,7 +15,6 @@ REQUIRE_MEMBERSHIP = getattr(settings, "CHAT_REQUIRE_MEMBERSHIP_FOR_PUBLIC", Tru
 
 User = get_user_model()
 
-
 class RoomViewSet(viewsets.ModelViewSet):
     queryset = Room.objects.all().order_by("-created_at")
     serializer_class = RoomSerializer
@@ -23,7 +22,6 @@ class RoomViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         u = self.request.user
-        # Public or private (where member); DISTINCT to avoid duplicates from M2M join
         return (
             Room.objects.filter(Q(is_private=False) | Q(members=u))
             .distinct()
@@ -31,8 +29,9 @@ class RoomViewSet(viewsets.ModelViewSet):
         )
 
     def perform_create(self, serializer):
-        room = serializer.save()
-        room.members.add(self.request.user)  # auto-member creator
+        # Make creator the owner and member
+        room = serializer.save(created_by=self.request.user)
+        room.members.add(self.request.user)
 
     @action(detail=True, methods=["post"])
     def join(self, request, pk=None):
@@ -45,7 +44,21 @@ class RoomViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     def leave(self, request, pk=None):
         room = self.get_object()
-        room.members.remove(request.user)
+        u = request.user
+
+        # Prevent leaving if you're not a member (no-op)
+        if not room.members.filter(id=u.id).exists():
+            return Response({"status": "left"})
+
+        # If the owner leaves, auto-transfer ownership to another member (if any)
+        is_owner = (room.created_by_id == u.id)
+        room.members.remove(u)
+
+        if is_owner:
+            new_owner = room.members.order_by('id').first()
+            room.created_by = new_owner  # can be None if no members left
+            room.save(update_fields=["created_by"])
+
         return Response({"status": "left"})
 
     @action(detail=True, methods=["post"])
@@ -53,6 +66,9 @@ class RoomViewSet(viewsets.ModelViewSet):
         room = self.get_object()
         if not room.is_private:
             return Response({"detail": "Invites are for private rooms only."}, status=400)
+        # (Optional) Only owner can invite; uncomment to enforce:
+        # if room.created_by_id != request.user.id:
+        #     raise PermissionDenied("Only the room owner can invite members.")
         username = request.data.get("username")
         try:
             u = User.objects.get(username=username)
@@ -61,18 +77,49 @@ class RoomViewSet(viewsets.ModelViewSet):
         room.members.add(u)
         return Response({"status": "invited"})
 
+    @action(detail=True, methods=["post"])
+    def remove_member(self, request, pk=None):
+        """
+        Owner-only: remove a member from a PRIVATE room.
+        Body: { "username": "<member-to-remove>" }
+        """
+        room = self.get_object()
+
+        if not room.is_private:
+            return Response({"detail": "Removing members applies to private rooms only."}, status=400)
+
+        if room.created_by_id != request.user.id:
+            raise PermissionDenied("Only the room owner can remove members.")
+
+        username = request.data.get("username")
+        if not username:
+            return Response({"detail": "username is required"}, status=400)
+
+        try:
+            target = User.objects.get(username=username)
+        except User.DoesNotExist:
+            return Response({"detail": "User not found"}, status=404)
+
+        if target.id == room.created_by_id:
+            return Response({"detail": "Owner cannot be removed."}, status=400)
+
+        if not room.members.filter(id=target.id).exists():
+            return Response({"detail": "User is not a member of this room."}, status=400)
+
+        room.members.remove(target)
+        return Response({"status": "removed"})
+
     @action(detail=True, methods=["get"])
     def members(self, request, pk=None):
-        room = self.get_object()  # respects get_queryset
+        room = self.get_object()
         members = list(room.members.all())
-        # attach last_seen_at
         profiles = {p.user_id: p.last_seen_at for p in UserProfile.objects.filter(user__in=members)}
         data = [
             {"id": u.id, "username": u.username, "last_seen_at": profiles.get(u.id)}
             for u in members
         ]
         return Response(data)
-
+    
     @action(detail=True, methods=["post"])
     def read(self, request, pk=None):
         """Mark room as read 'now' for the current user (drives unread badges)."""
@@ -81,6 +128,7 @@ class RoomViewSet(viewsets.ModelViewSet):
         state.last_read_at = timezone.now()
         state.save(update_fields=["last_read_at"])
         return Response({"status": "ok"})
+
 
 
 class MessageViewSet(viewsets.ModelViewSet):
@@ -131,6 +179,57 @@ class MessageViewSet(viewsets.ModelViewSet):
         if msg.sender != request.user:
             raise PermissionDenied("You can delete only your messages.")
         return super().destroy(request, *args, **kwargs)
+    
+    def list(self, request, *args, **kwargs):
+        """
+        Cursor-like pagination using integer IDs:
+        ?room=<id> (required)
+        ?limit=50            (default 50, max 200)
+        ?before_id=<msg_id>  -> older messages than this id
+        ?after_id=<msg_id>   -> newer than this id (rarely used; kept for completeness)
+        """
+        qs = super().get_queryset()  # already filtered to rooms you can access
+        room_id = request.query_params.get("room")
+        if not room_id:
+            return Response([], status=200)
+
+        # base filter for this room
+        qs = qs.filter(room_id=room_id)
+
+        try:
+            limit = int(request.query_params.get("limit", 50))
+        except ValueError:
+            limit = 50
+        limit = max(1, min(limit, 200))
+
+        before_id = request.query_params.get("before_id")
+        after_id = request.query_params.get("after_id")
+
+        if after_id:
+            try:
+                after_id = int(after_id)
+            except ValueError:
+                after_id = None
+            items = list(qs.filter(id__gt=after_id).order_by("id")[:limit]) if after_id else []
+        elif before_id:
+            try:
+                before_id = int(before_id)
+            except ValueError:
+                before_id = None
+            if before_id:
+                older = list(qs.filter(id__lt=before_id).order_by("-id")[:limit])
+                older.reverse()
+                items = older
+            else:
+                items = []
+        else:
+            latest = list(qs.order_by("-id")[:limit])
+            latest.reverse()
+            items = latest
+
+        ser = self.get_serializer(items, many=True)
+        return Response(ser.data, status=200)
+
 
 
 @api_view(["POST"])

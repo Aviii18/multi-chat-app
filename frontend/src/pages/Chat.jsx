@@ -14,6 +14,10 @@ export default function Chat() {
   const [rooms, setRooms] = useState([])
   const [activeRoom, setActiveRoom] = useState(null)
   const [messages, setMessages] = useState([])
+  const [hasMore, setHasMore] = useState(true)
+  const [loadingOlder, setLoadingOlder] = useState(false)
+  const topCursorRef = useRef(null)     // earliest loaded message id
+  const scrollBoxRef = useRef(null)     // .scroll-area element
   const [typingWho, setTypingWho] = useState([])
   const [onlineMap, setOnlineMap] = useState({})
   const [showCreate, setShowCreate] = useState(false)
@@ -24,6 +28,15 @@ export default function Chat() {
   const heartbeatRef = useRef(null)
 
   const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:9000/ws'
+  
+  useEffect(() => {
+    const h = (e) => {
+      const { username } = e.detail || {}
+      if (username) setMembers(prev => prev.filter(m => m.username !== username))
+    }
+    window.addEventListener('members:removed', h)
+    return () => window.removeEventListener('members:removed', h)
+  }, [])
 
   const refreshRooms = () =>
     api.get('/rooms/').then(res => {
@@ -56,7 +69,18 @@ export default function Chat() {
   useEffect(() => {
     if (!activeRoom) return
     if (activeRoom.is_member) {
-      api.get('/messages/', { params: { room: activeRoom.id }}).then(res => setMessages(res.data || []))
+      api.get('/messages/', { params: { room: activeRoom.id, limit: 50 }})
+     .then(res => {
+       const arr = res.data || []
+       setMessages(arr)
+       setHasMore(arr.length >= 50)
+       topCursorRef.current = arr.length ? arr[0].id : null
+       // on first load, stick to bottom
+       requestAnimationFrame(() => {
+         const el = scrollBoxRef.current
+         if (el) el.scrollTop = el.scrollHeight
+       })
+     })
     } else {
       setMessages([])
     }
@@ -133,7 +157,7 @@ export default function Chat() {
   const sendMessage = async (content) => {
     if (!activeRoom) return
     const tmpId = (crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2))
-    const tmp = { _tmpId: tmpId, content, room: activeRoom.id, sender_name: user?.username, timestamp: new Date().toISOString() }
+    const tmp = { _tmpId: tmpId, content, room: activeRoom.id, sender: { id: user?.id, username: user?.username }, timestamp: new Date().toISOString() }
     setMessages(prev => [...prev, tmp])
     try {
       const { data } = await api.post('/messages/', { room: activeRoom.id, content })
@@ -153,20 +177,54 @@ export default function Chat() {
   }
 
   const attachFile = async (file) => {
-    if (!activeRoom) return
-    const form = new FormData()
-    form.append('room', activeRoom.id)
-    form.append('file', file)
-    form.append('content', file.name)
-    try {
-      const { data } = await api.post('/messages/', form, { headers: { 'Content-Type': 'multipart/form-data' }})
-      wsRef.current?.send(JSON.stringify({ type: 'message:new', room_id: activeRoom.id, payload: data }))
-      setMessages(prev => [...prev, data])
-      await api.post(`/rooms/${activeRoom.id}/read/`)
-      setUnreadZero(activeRoom.id)
-    } catch (e) {
-      console.error(e)
-    }
+  if (!activeRoom) return
+
+  // 1) Optimistic bubble so the user sees it instantly (with a preview URL)
+  const tmpId = (crypto?.randomUUID?.() ?? String(Date.now()))
+  const tmpURL = URL.createObjectURL(file)
+  const optimistic = {
+    _tmpId: tmpId,
+    room: activeRoom.id,
+    content: file.name,
+    file: tmpURL, // temporary preview until server returns the real URL
+    sender: { id: user?.id, username: user?.username }, // so the name shows now
+    timestamp: new Date().toISOString()
+  }
+  setMessages(prev => [...prev, optimistic])
+
+  // 2) Build FormData and upload (let axios set the multipart boundary)
+  const form = new FormData()
+  form.append('room', activeRoom.id)
+  form.append('file', file)
+  form.append('content', file.name)
+
+  try {
+    const { data } = await api.post('/messages/', form /* no headers here */)
+
+    // Replace optimistic with the real, saved message (has a stable id + final file URL)
+    setMessages(prev => prev.map(m => (m._tmpId === tmpId ? data : m)))
+
+    // Free the temporary object URL
+    URL.revokeObjectURL(tmpURL)
+
+    // Broadcast to peers
+    wsRef.current?.send(JSON.stringify({
+      type: 'message:new',
+      room_id: activeRoom.id,
+      payload: data
+    }))
+
+    // Mark room as read and zero the badge locally
+    await api.post(`/rooms/${activeRoom.id}/read/`)
+    setUnreadZero(activeRoom.id)
+    setActiveRoom(prev => (prev && prev.id === activeRoom.id) ? { ...prev, unread_count: 0 } : prev)
+
+  } catch (e) {
+    console.error(e)
+    // Roll back optimistic message on failure + clean preview URL
+    setMessages(prev => prev.filter(m => m._tmpId !== tmpId))
+    URL.revokeObjectURL(tmpURL)
+  }
   }
 
   // NEW: Edit / Delete handlers
@@ -221,9 +279,38 @@ export default function Chat() {
     setActiveRoom(room)
   }
 
+  const loadOlder = async () => {
+    if (!activeRoom || !hasMore || loadingOlder || !topCursorRef.current) return
+    setLoadingOlder(true)
+    const el = scrollBoxRef.current
+    const prevHeight = el ? el.scrollHeight : 0
+    try {
+      const { data } = await api.get('/messages/', {
+        params: { room: activeRoom.id, limit: 50, before_id: topCursorRef.current }
+      })
+      const older = data || []
+      if (older.length === 0) {
+        setHasMore(false)
+      } else {
+        setMessages(prev => [...older, ...prev])
+        topCursorRef.current = older[0].id
+        // keep viewport steady after prepending
+        requestAnimationFrame(() => {
+          const nowHeight = el ? el.scrollHeight : 0
+          if (el) el.scrollTop = nowHeight - prevHeight + el.scrollTop
+        })
+      }
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setLoadingOlder(false)
+    }
+  }
+
+
   return (
     <>
-      <div className="row g-3 h-100 min-h-0">
+      <div className="row g-3" style={{ height: '100vh' }}>
         <div className="col-12 col-md-4 col-lg-3 h-100 min-h-0">
           <div className="card p-2 h-100 overflow-hidden" style={{minHeight: 0}}>
             <div className="d-flex justify-content-between align-items-center mb-2">
@@ -251,12 +338,14 @@ export default function Chat() {
                     </button>
                   </div>
                   <div className="d-flex gap-2">
-                    {!activeRoom.is_private ? (
-                      activeRoom.is_member
-                        ? <button className="btn btn-sm btn-outline-warning" onClick={leaveRoom}>Leave</button>
-                        : <button className="btn btn-sm btn-success" onClick={joinRoom}>Join</button>
-                    ) : null}
-                    {activeRoom.is_private ? <InviteUser roomId={activeRoom.id} /> : null}
+                    {/* new: leave available for ANY room if you're a member; join only for public */}
+                    {activeRoom.is_member && (
+                      <button className="btn btn-sm btn-outline-warning" onClick={leaveRoom}>Leave</button>
+                    )}
+                    {!activeRoom.is_private && !activeRoom.is_member && (
+                      <button className="btn btn-sm btn-success" onClick={joinRoom}>Join</button>
+                    )}
+                    {activeRoom.is_private && activeRoom.is_owner ? <InviteUser roomId={activeRoom.id} /> : null}
                   </div>
                 </div>
                 <div className="flex-grow-1 d-flex flex-column min-h-0">
@@ -272,6 +361,10 @@ export default function Chat() {
                         typingWho={typingWho}
                         onEditMessage={editMessage}
                         onDeleteMessage={deleteMessage}
+                        scrollRef={scrollBoxRef}
+                        onLoadOlder={loadOlder}
+                        hasMore={hasMore}
+                        loadingOlder={loadingOlder}
                       />
                       <div className="mt-2">
                         <TypingIndicator who={typingWho} />
@@ -287,6 +380,9 @@ export default function Chat() {
                   onlineUsers={onlineUsers}
                   me={user?.username}
                   onClose={()=> setShowMembers(false)}
+                  roomId={activeRoom.id}
+                  isOwner={!!activeRoom.is_owner}
+                  ownerUsername={activeRoom.created_by?.username}
                 />
               </>
             ) : (
